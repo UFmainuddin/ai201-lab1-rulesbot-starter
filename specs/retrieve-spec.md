@@ -1,13 +1,13 @@
 # Spec: `retrieve()`
 
 **File:** `retriever.py`
-**Status:** Spec incomplete — fill in all blank fields before implementing
+**Status:** Complete
 
 ---
 
 ## Purpose
 
-Given a user's natural language query, find the most relevant chunks from the vector store using semantic similarity search. Return them ranked by relevance so that `generate_response()` can use them as context.
+This function takes a user question and searches the vector store for the best rule chunks. It returns the chunks in order, from closest match to weakest match.
 
 ---
 
@@ -17,94 +17,68 @@ Given a user's natural language query, find the most relevant chunks from the ve
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `query` | `str` | The user's natural language question |
-| `n_results` | `int` | Maximum number of chunks to return (default: `N_RESULTS` from `config.py`) |
+| `query` | `str` | The user question |
+| `n_results` | `int` | The max number of chunks to return |
 
 **Output:** `list[dict]`
 
-Each dict in the returned list must contain exactly these keys:
+Each dict has these keys:
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `"text"` | `str` | The chunk text |
-| `"game"` | `str` | The game name this chunk came from |
-| `"distance"` | `float` | Cosine distance score — lower means more similar to the query |
+| `"game"` | `str` | The game name |
+| `"distance"` | `float` | Cosine distance. Lower is better |
 
-Results should be ordered from most to least relevant (lowest to highest distance). Returns an empty list `[]` if the collection contains no documents.
+If the collection is empty, return `[]`.
 
 ---
 
 ## Design Decisions
 
-*Complete the fields below before writing any code. Use your AI tool in Plan or Ask mode to help you reason through what belongs here — but the decisions are yours.*
-
----
-
 ### Query approach
 
-*Describe how you will use `_collection.query()` to find relevant chunks. What arguments will you pass, and why?*
-
-```
-[your answer here]
-```
-
----
+I use `_collection.query()` with one query string. I pass `query_texts=[query]`, `n_results=n_results`, and `include=["documents", "metadatas", "distances"]`. This gives the text, game metadata, and score for each result.
 
 ### Return structure
 
-*Sketch out what one item in your return list looks like as a concrete example. Where does each field come from in the query results?*
+One returned item looks like this:
 
-```
-[your answer here]
+```python
+{
+    "text": "When a 7 is rolled...",
+    "game": "Catan",
+    "distance": 0.466,
+}
 ```
 
----
+The text comes from `results["documents"][0]`. The game comes from `results["metadatas"][0]`. The score comes from `results["distances"][0]`.
 
 ### Handling the nested result structure
 
-*`_collection.query()` returns nested lists. Describe what index you need to access to get the actual list of results for a single query, and why the nesting exists.*
-
-```
-[your answer here]
-```
-
----
+Chroma returns one inner list for each query. We only send one query, so the real results are at index `[0]`. For example, `results["documents"][0]` is the list of chunks for this one question.
 
 ### Relevance threshold
 
-*Will you filter out results above a certain distance score, or return all `n_results` regardless of how relevant they are? What are the tradeoffs of each approach?*
-
-```
-[your answer here]
-```
-
----
+`retrieve()` returns all top results. I do not filter here because it is useful to see weak results while testing. The generation step filters weak chunks before sending context to the LLM.
 
 ### Edge cases
 
-*How does your implementation behave when: (a) the collection is empty, (b) the query matches no chunks well, (c) the query matches chunks from multiple games?*
-
-```
-[your answer here]
-```
+If the collection is empty, the function returns `[]`. If the query does not match well, it still returns the closest chunks, but the distances will be high. If the query matches many games, it can return chunks from many games.
 
 ---
 
 ## Implementation Notes
 
-*Fill this in after implementing, before moving to Milestone 3.*
-
 **Test query and top result returned:**
 
-```
-Query: [your test query]
-Top result game: [game name]
-Distance score: [score]
-Does it make sense? [yes / no / explain]
+```text
+Query: What happens when you run out of disease cubes in Pandemic?
+Top result game: Pandemic
+Distance score: 0.373
+Does it make sense? Yes. The chunk says players lose if a disease cube color runs out.
 ```
 
 **One thing about the query results that surprised you:**
 
-```
-[your answer here]
-```
+The query "What happens when you roll a 7?" returned Catan first, but it also returned some Risk chunks after that. This happened because Risk also has dice rules. The distance scores helped show that Catan was the best match.

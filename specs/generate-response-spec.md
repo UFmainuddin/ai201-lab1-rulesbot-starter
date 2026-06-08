@@ -1,13 +1,15 @@
 # Spec: `generate_response()`
 
 **File:** `generator.py`
-**Status:** Spec incomplete — fill in all blank fields before implementing
+**Status:** Complete
 
 ---
 
 ## Purpose
 
-Given a user query and a list of retrieved rule chunks, generate a response that directly answers the question using only the retrieved text as context. The response must be grounded — it should not draw on the model's general knowledge of board games, only on what was retrieved.
+This function takes the user question and the retrieved rule chunks. It asks the LLM to answer using only those chunks.
+
+The answer should name the game. If the answer is not in the chunks, the bot should say that clearly.
 
 ---
 
@@ -17,101 +19,68 @@ Given a user query and a list of retrieved rule chunks, generate a response that
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `query` | `str` | The user's original question |
-| `retrieved_chunks` | `list[dict]` | Ranked list of chunks from `retrieve()`, each with `"text"`, `"game"`, and `"distance"` |
+| `query` | `str` | The user question |
+| `retrieved_chunks` | `list[dict]` | Chunks from `retrieve()` |
 
 **Output:** `str`
 
-A plain string containing the response to show the user. The response should:
-- Answer the question using only the retrieved rule text
-- Identify which game the answer comes from
-- Acknowledge clearly when the answer is not found in the loaded rules
-
-Returns a fallback string (not an error) when `retrieved_chunks` is empty.
+The output is the answer shown to the user.
 
 ---
 
 ## Design Decisions
 
-*Complete the fields below before writing any code. Use your AI tool in Plan or Ask mode to help you reason through what belongs here — but the decisions are yours.*
-
----
-
 ### Context formatting
 
-*How will you format the retrieved chunks before passing them to the LLM? Describe the structure — not the code. Consider: will you label chunks by game? Include distance scores? Separate chunks with delimiters?*
+Each chunk is labeled as a source. I include the source number, game name, distance score, and rule text. I separate sources with `---` so the model can see where one chunk ends and the next starts.
 
-```
-[your answer here]
-```
+### System prompt grounding instruction
 
----
-
-### System prompt — grounding instruction
-
-*Write the exact system prompt instruction you will use to prevent the model from answering beyond the retrieved text. This is the most important design decision in this function.*
-
-```
-[your answer here]
+```text
+Answer using only the rule text provided by the user. If the answer is not in the provided rule text, say that clearly. Do not guess, do not use outside knowledge, and do not fill in missing details. Always name the game or games that support the answer.
 ```
 
----
+### System prompt citation instruction
 
-### System prompt — citation instruction
-
-*Write the exact instruction you will use to tell the model to identify which game its answer comes from.*
-
+```text
+Always name the game or games that support the answer.
 ```
-[your answer here]
-```
-
----
 
 ### Fallback behavior
 
-*What should the response say when the answer isn't found in the loaded rule books? Write the exact fallback message.*
+If no chunks are retrieved:
 
-```
-[your answer here]
+```text
+I could not find anything relevant in the loaded rule books. Try rephrasing your question or check that ingestion is working.
 ```
 
----
+If all chunks are weak:
+
+```text
+I could not find this answer in the loaded rule books. Please ask about one of the loaded games or try a more specific question.
+```
 
 ### Handling low-relevance chunks
 
-*`retrieved_chunks` may include chunks with high distance scores (weak relevance). Will you filter these out before building context, pass them all in, or handle them another way? What are the tradeoffs?*
-
-```
-[your answer here]
-```
-
----
+I filter out chunks with distance above `0.55` before calling the LLM. This keeps weak matches from confusing the answer. The tradeoff is that a hard question might lose useful context, but it is safer than giving the model bad context.
 
 ### Message structure
 
-*Describe how you will structure the messages list for the API call — what goes in the system message vs. the user message?*
-
-```
-[your answer here]
-```
+The system message has the grounding rules. The user message has the retrieved context and the question. This keeps the instructions separate from the data.
 
 ---
 
 ## Implementation Notes
 
-*Fill this in after implementing and testing.*
-
 **Test query and response:**
 
-```
-Query: [your test query]
-Response: [abbreviated response]
-Correctly grounded? [yes / no]
-Cited the right game? [yes / no]
+```text
+Query: What happens when you run out of disease cubes in Pandemic?
+Response: In Pandemic, if any color of disease cubes runs out when a cube must be placed, the game ends immediately and players lose.
+Correctly grounded? Yes
+Cited the right game? Yes
 ```
 
-**One thing you changed from your original spec after seeing the actual output:**
+**One thing changed after testing:**
 
-```
-[your answer here]
-```
+I changed the weak chunk cutoff from `0.65` to `0.55`. The higher cutoff let in weak dice chunks from Risk for a Catan question about rolling a 7.
